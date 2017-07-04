@@ -145,6 +145,28 @@ phina.app.Element.prototype.getter('physics', function() {
     return this._physics;
 });
 
+phina.define('HitTestBox', {
+    superClass: 'Object2D',
+    init: function (option) {
+        option = option || {};
+        this.superInit(option);
+    },
+    isCollide: function (obj) {
+        var bool = this.hitTestElement(obj);
+        if (bool) {
+            console.log(bool);
+        }
+    },
+    update: function (app) {
+        if (app.elapsedTime % 30 == 0) {
+            console.log(this.x);
+            console.log(this.y);
+            console.log(this.parent.x);
+            console.log(this.parent.y);
+        }
+    }
+});
+
 phina.define ('Ball', {
     superClass: 'CircleShape',
     init: function (option) {
@@ -153,6 +175,7 @@ phina.define ('Ball', {
         var g = option.gravity || Vector2(0, 0.1);
         option.physics && this.physics.gravity.set(g.x, g.y);
         this.elestic = 0.6;
+
         this.on('pointstart', function (e) {
             this.startPosition = e.pointer.position.clone();
         });
@@ -164,53 +187,53 @@ phina.define ('Ball', {
             var v = Vector2.sub(this.startPosition, this.endPosition).mul(0.2);
             this.addForce(v.x, v.y);
         });
-        var shape = RectangleShape({
+
+        this.shape = RectangleShape({
             width: this.width,
             height: this.height,
         }).addChildTo(this).alpha = 0.3;
 
-        this.label = Label().addChildTo(this);
+        //this.label = Label().addChildTo(this);
         this.isCollide = false;
+
+        this.hitTestBox = HitTestBox({
+            width: this.width,
+            height: this.height,
+        }).addChildTo(this);
     },
     bound: function (app) {
         var left = this.parent.left + this.parent.width*this.originX;
         var right = this.parent.right + this.parent.width*this.originX;
         var top = this.parent.top + this.parent.height*this.originY;
         var bottom = this.parent.bottom + this.parent.height*this.originY;
+        var calcReflectVector = function (v, surface) {
+            var normal = Vector2(-surface.y, surface.x).normalize();
+            var a = -Vector2.dot(v, normal);
+            var r = Vector2.add(v, Vector2.mul(normal, 2*a));
+            return r;
+        }
         if (left > this.left) {
             this.left = left;
-            var n = Vector2(0, top - bottom);
-            var normal = Vector2(-n.y, n.x).normalize();
-            var a = -Vector2.dot(this.velocity, normal);
-            var r = Vector2.add(this.velocity, Vector2.mul(normal, 2*a));
-            this.velocity.set(r.x, r.y);
+            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
+            this.velocity.set(reflect.x, reflect.y);
             this.velocity.mul(this.elestic);
         }
         if (right < this.right) {
             this.right = right;
-            var n = Vector2(0, bottom - top);
-            var normal = Vector2(-n.y, n.x).normalize();
-            var a = -Vector2.dot(this.velocity, normal);
-            var r = Vector2.add(this.velocity, Vector2.mul(normal, 2*a));
-            this.velocity.set(r.x, r.y);
+            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
+            this.velocity.set(reflect.x, reflect.y);
             this.velocity.mul(this.elestic);
         }
         if (top > this.top) {
             this.top = top;
-            var n = Vector2(right - left, 0);
-            var normal = Vector2(-n.y, n.x).normalize();
-            var a = -Vector2.dot(this.velocity, normal);
-            var r = Vector2.add(this.velocity, Vector2.mul(normal, 2*a));
-            this.velocity.set(r.x, r.y);
+            var reflect = calcReflectVector(this.velocity, Vector2(right - left, 0));
+            this.velocity.set(reflect.x, reflect.y);
             this.velocity.mul(this.elestic);
         }
         if (bottom < this.bottom) {
             this.bottom = bottom;
-            var n = Vector2(left - right, 0);
-            var normal = Vector2(-n.y, n.x).normalize();
-            var a = -Vector2.dot(this.velocity, normal);
-            var r = Vector2.add(this.velocity, Vector2.mul(normal, 2*a));
-            this.velocity.set(r.x, r.y);
+            var reflect = calcReflectVector(this.velocity, Vector2(left - right, 0));
+            this.velocity.set(reflect.x, reflect.y);
             this.velocity.y *= this.elestic;
         }
     },
@@ -254,29 +277,29 @@ phina.define ('Ball', {
                         r1.right, r1.top, r1.right, r1.bottom);
                 // r0上辺とr1右辺がぶつかった
                 if (isCrossRT || isCrossLT) {
-                    r1.bottom = r0.top;
-                    // 反射ベクトル式：r = f-2(f*normal)*normal
-                    // 壁ベクトル
-                    var n = Vector2(r0.right-r0.left, r0.top-r0.top);
-                    // 壁の法線ベクトル
-                    var normal = Vector2(-n.y, n.x).normalize();
-                    // 進行ベクトルと法線の内積
-                    var a = -Vector2.dot(this.velocity, normal);
-                    // 反射ベクトル
-                    var r = Vector2.add(this.velocity, normal.mul(2*a));
-                    this.velocity.set(r.x, r.y);
-                    this.velocity.y *= this.elestic;
+                    // r1.bottom = r0.top;
+                    // // 反射ベクトル式：r = f-2(f*normal)*normal
+                    // // 壁ベクトル
+                    // var n = Vector2(r0.right-r0.left, r0.top-r0.top);
+                    // // 壁の法線ベクトル
+                    // var normal = Vector2(-n.y, n.x).normalize();
+                    // // 進行ベクトルと法線の内積
+                    // var a = -Vector2.dot(this.velocity, normal);
+                    // // 反射ベクトル
+                    // var r = Vector2.add(this.velocity, normal.mul(2*a));
+                    // this.velocity.set(r.x, r.y);
+                    // this.velocity.y *= this.elestic;
                 } else { this.isCollide = false; }
                 // r0上辺とr1左辺がぶつかった
                 if (isCrossTL || isCrossBL) {
-                    // console.info('左');
-                    // r1.left = r0.left;
-                    // var n = Vector2(r0.right-r0.left, r0.bottom-r0.top);
-                    // var normal = Vector2(-n.y, n.x).normalize();
-                    // var a = -Vector2.dot(this.velocity, normal.mul(2*a));
-                    // var r = Vector2.add(this.velocity, normal.mul(2*a));
-                    // this.velocity.set(r.x, r.y);
-                    // this.velocity.mul(this.elestic);
+                    console.info('左');
+                    r1.left = r0.left;
+                    var n = Vector2(r0.right-r0.left, r0.bottom-r0.top);
+                    var normal = Vector2(-n.y, n.x).normalize();
+                    var a = -Vector2.dot(this.velocity, normal.mul(2*a));
+                    var r = Vector2.add(this.velocity, normal.mul(2*a));
+                    this.velocity.set(r.x, r.y);
+                    this.velocity.mul(this.elestic);
                 }
                 // r0右辺とr1上辺がぶつかった
                 if (isCrossTR || isCrossBR) {
@@ -287,13 +310,29 @@ phina.define ('Ball', {
                     // console.info('下');
                     // r0の下にぶつかる
                 }
+                // console.log("----------------------");
+                // console.log("isCrossRT={0}".format(isCrossRT));
+                // console.log("isCrossLT={0}".format(isCrossLT));
+                // console.log("isCrossTL={0}".format(isCrossTL));
+                // console.log("isCrossBL={0}".format(isCrossBL));
+                // console.log("isCrossTR={0}".format(isCrossTR));
+                // console.log("isCrossBR={0}".format(isCrossBR));
+                // console.log("isCrossLB={0}".format(isCrossLB));
+                // console.log("isCrossRB={0}".format(isCrossRB));
+                // console.log("----------------------");
             }
         }, this);
     },
     update: function (app) {
         // this.label.text = this.isCollide ? 'hit' : 'none';
         this.bound();
-        this.collide();
+        var elements = this.parent.children;
+        elements.each(function (element) {
+            if (this.hitTestBox.isCollide(element)) {
+                console.log('test');
+            }
+        }, this);
+        //this.collide();
         // var p = app.pointer;
         // this.position.set(p.x, p.y);
     },
