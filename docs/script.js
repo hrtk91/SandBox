@@ -158,12 +158,12 @@ phina.define('HitTestBox', {
         }
     },
     update: function (app) {
-        if (app.elapsedTime % 30 == 0) {
-            console.log(this.x);
-            console.log(this.y);
-            console.log(this.parent.x);
-            console.log(this.parent.y);
-        }
+        // if (app.elapsedTime % 30 == 0) {
+        //     console.log(this.x);
+        //     console.log(this.y);
+        //     console.log(this.parent.x);
+        //     console.log(this.parent.y);
+        // }
     }
 });
 
@@ -206,6 +206,7 @@ phina.define ('Ball', {
         var right = this.parent.right + this.parent.width*this.originX;
         var top = this.parent.top + this.parent.height*this.originY;
         var bottom = this.parent.bottom + this.parent.height*this.originY;
+        // Vector2.reflectってメソッドあるよね…
         var calcReflectVector = function (v, surface) {
             var normal = Vector2(-surface.y, surface.x).normalize();
             var a = -Vector2.dot(v, normal);
@@ -244,6 +245,7 @@ phina.define ('Ball', {
         var td = Math.floor((ax-bx)*(dy-ay)+(ay-by)*(ax-dx));
         return (tc*td < 0);
     },
+    /*
     collide: function () {
         var elements = this.parent.children;
         elements.each(function (element) {
@@ -323,15 +325,81 @@ phina.define ('Ball', {
             }
         }, this);
     },
+    */
+    collide: function (element) {
+        const top = element.top;
+        const bottom = element.bottom;
+        const left = element.left;
+        const right = element.right;
+
+        const prepos = Vector2.sub(this.position, this.velocity);
+        const nowpos = this.position.clone();
+        const numOfJudge = 10;
+        for (var i = 0; i < numOfJudge; i++) {
+            var lerp = Vector2.lerp(prepos, nowpos, i/numOfJudge);
+            // 中心点同士の距離を測り、xとy比較して差が大きい方向から衝突したとして処理する
+            var dp = Vector2.sub(lerp, element);
+            if (Math.abs(dp.x) < Math.abs(dp.y)) {
+                // yの方が差が大きい=上もしくは下からきた
+                
+                if (dp.y >= 0) {
+                    this.top = bottom;
+                    var surface = Vector2(right-left, 0);
+                    var reflect =
+                        Vector2.reflect(this.velocity, Vector2(-surface.y, surface.x).normalize());
+                    this.velocity.set(reflect.x, reflect.y);
+                    this.velocity.mul(this.elestic);
+                    return;
+                } else {
+                    this.bottom = top;
+                    var surface = Vector2(left-right, 0);
+                    var reflect =
+                        Vector2.reflect(this.velocity, Vector2(-surface.y, surface.x).normalize());
+                    this.velocity.set(reflect.x, reflect.y);
+                    this.velocity.mul(this.elestic);
+                    return;
+                }
+            } else {
+                // xの方が差が大きい=左もしくは右からきた
+                if (dp.x >= 0) {
+                    this.left = right;
+                    var surface = Vector2(0, top-bottom);
+                    var reflect =
+                        Vector2.reflect(this.velocity, Vector2(-surface.y, surface.x).normalize());
+                    this.velocity.set(reflect.x, reflect.y);
+                    this.velocity.mul(this.elestic);
+                    return;
+                } else {
+                    this.right = left;
+                    var surface = Vector2(0, bottom-top);
+                    var reflect =
+                        Vector2.reflect(this.velocity, Vector2(-surface.y, surface.x).normalize());
+                    this.velocity.set(reflect.x, reflect.y);
+                    this.velocity.mul(this.elestic);
+                    return;
+                }
+            }
+        }
+    },
+    collideWithGround: function (ground) {
+        this.bottom = ground.top;
+        this.velocity.y *= -0.5;
+    },
+    collider: function () {
+        var elements = this.parent.children;
+        elements.each(function (elem) {
+            if (elem === this || !elem.collidable) return;
+            if (elem.isGround && elem.hitTestElement(this)) {
+                this.collideWithGround(elem);
+            } else if (elem.hitTestElement(this)) {
+                this.collide(elem);
+            }
+        }, this);
+    },
     update: function (app) {
         // this.label.text = this.isCollide ? 'hit' : 'none';
         this.bound();
-        var elements = this.parent.children;
-        elements.each(function (element) {
-            if (this.hitTestBox.isCollide(element)) {
-                console.log('test');
-            }
-        }, this);
+        this.collider();
         //this.collide();
         // var p = app.pointer;
         // this.position.set(p.x, p.y);
@@ -368,6 +436,7 @@ phina.define('MainScene', {
             height: 200,
         }).addChildTo(layer);
         ground.collidable = true;
+        ground.isGround = true;
         ground.top = layer.height*0.95 + 10;
         ground.left = 0;
         
