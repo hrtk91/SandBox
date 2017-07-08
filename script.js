@@ -25,6 +25,7 @@ phina.define('Camera', {
         this.backgroundColor = '#222';
         this.rangeBorder = RectangleShape({fill: 'transparent',height:this.height,width:this.width});
         this.offset = Vector2(0, 0);
+        this.drawPoint = Vector2(0, 0);
         this.on('enterframe', function (e) {
             var temp = this._worldMatrix;
             this._worldMatrix = null;
@@ -86,6 +87,15 @@ phina.define('Camera', {
         this.rangeBorderDst.removeChild(this.rangeBorder);
         return this;
     },
+    isDrawing: function (element) {
+        let left = this.drawPoint.x;
+        let right = this.drawPoint.x + this.width;
+        let top = this.drawPoint.y;
+        let bottom = this.drawPoint.y + this.height;
+
+        return (left < element.right && right > element.left &&
+            top < element.bottom && bottom > element.top);
+    },
     draw: function (canvas) {
         if (this.target) this.range = this.calcViewRange(this.target);
         var range = this.range;
@@ -97,21 +107,21 @@ phina.define('Camera', {
         this.canvas.drawImage(
             image, range.dx, range.dy, this.width, this.height,
             0, 0, this.width, this.height);
-        // this.context.drawImage(
-        //     image, range.dx, range.dy, range.dw, range.dh,
-        //     0, 0, this.width, this.height);
-        //console.info('w:{0},h:{1}'.format(range.dw/this.magnification, range.dh/this.magnification));
-        //console.info('range:{0},range2:{1},this:{2},'.format(range.dx, range.dw, this.width));
-        // canvas.context.drawImage(
-        //     this.domElement, 0, 0, this.width, this.height,
-        //     -this.width*this.originX, -this.height*this.originY, this.width, this.height);
+        this.drawPoint.set(range.dx, range.dy);
+        
+        // 親キャンバスに書き写す
         canvas.context.drawImage(
             this.domElement, 0, 0, this.width, this.height,
             -this.width*this.originX, -this.height*this.originY, this.width, this.height);
 
+        // TODO:描画範囲のオブジェクトを集める
+        this.rendered = [];
+        let children = this.parent.layer.children;
+        this.rendered = children.filter((it) => {this.isDrawing(it) });
+
         this.rangeBorder.left = range.dx;
         this.rangeBorder.top = range.dy;
-    },
+    }
 });
 
 phina.define('Physics', {
@@ -130,7 +140,7 @@ phina.define('Physics', {
         target.drag = this.drag = 0.999;
         target.collidable = true;
 
-        this.isKinematic = true;
+        target.isKinematic = this.isKinematic = true;
     },
     update: function (app) {
         if (!this.isKinematic) return;
@@ -145,188 +155,35 @@ phina.app.Element.prototype.getter('physics', function() {
     return this._physics;
 });
 
-phina.define('HitTestBox', {
-    superClass: 'Object2D',
-    init: function (option) {
-        option = option || {};
-        this.superInit(option);
-    },
-    isCollide: function (obj) {
-        var bool = this.hitTestElement(obj);
-        if (bool) {
-            console.log(bool);
-        }
-    },
-    update: function (app) {
-        // if (app.elapsedTime % 30 == 0) {
-        //     console.log(this.x);
-        //     console.log(this.y);
-        //     console.log(this.parent.x);
-        //     console.log(this.parent.y);
-        // }
-    }
-});
+phina.define('Collider', {
+    superClass: 'Accessory',
+    init: function (target) {
+        this.superInit(target);
 
-phina.define ('Ball', {
-    superClass: 'CircleShape',
-    init: function (option) {
-        option = option || {};
-        this.superInit(option);
-        var g = option.gravity || Vector2(0, 0.1);
-        option.physics && this.physics.gravity.set(g.x, g.y);
-        this.elestic = 0.6;
+        this.collidables = [];
 
-        this.on('pointstart', function (e) {
-            this.startPosition = e.pointer.position.clone();
-        });
-        this.on('pointmove', function (e) {
-            //var v = Vector2.sub(ball.startPosition, e.pointer.position);
-        });
-        this.on('pointend', function (e) {
-            this.endPosition = e.pointer.position.clone();
-            var v = Vector2.sub(this.startPosition, this.endPosition).mul(0.2);
-            this.addForce(v.x, v.y);
-        });
-
-        this.shape = RectangleShape({
-            width: this.width,
-            height: this.height,
-        }).addChildTo(this).alpha = 0.3;
-
-        //this.label = Label().addChildTo(this);
-        this.isCollide = false;
-
-        this.hitTestBox = HitTestBox({
-            width: this.width,
-            height: this.height,
-        }).addChildTo(this);
-    },
-    bound: function (app) {
-        var left = this.parent.left + this.parent.width*this.originX;
-        var right = this.parent.right + this.parent.width*this.originX;
-        var top = this.parent.top + this.parent.height*this.originY;
-        var bottom = this.parent.bottom + this.parent.height*this.originY;
-        // Vector2.reflectってメソッドあるよね…
-        var calcReflectVector = function (v, surface) {
-            var normal = Vector2(-surface.y, surface.x).normalize();
-            var a = -Vector2.dot(v, normal);
-            var r = Vector2.add(v, Vector2.mul(normal, 2*a));
-            return r;
-        }
-        if (left > this.left) {
-            this.left = left;
-            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
-            this.velocity.set(reflect.x, reflect.y);
-            this.velocity.mul(this.elestic);
-        }
-        if (right < this.right) {
-            this.right = right;
-            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
-            this.velocity.set(reflect.x, reflect.y);
-            this.velocity.mul(this.elestic);
-        }
-        if (top > this.top) {
-            this.top = top;
-            var reflect = calcReflectVector(this.velocity, Vector2(right - left, 0));
-            this.velocity.set(reflect.x, reflect.y);
-            this.velocity.mul(this.elestic);
-        }
-        if (bottom < this.bottom) {
-            this.bottom = bottom;
-            var reflect = calcReflectVector(this.velocity, Vector2(left - right, 0));
-            this.velocity.set(reflect.x, reflect.y);
-            this.velocity.y *= this.elestic;
-        }
-    },
-    crossTest: function (ax, ay, bx, by, cx, cy, dx, dy) {
-        // 線分交差判定
-        // http://qiita.com/ykob/items/ab7f30c43a0ed52d16f2
-        var tc = Math.floor((ax-bx)*(cy-ay)+(ay-by)*(ax-cx));
-        var td = Math.floor((ax-bx)*(dy-ay)+(ay-by)*(ax-dx));
-        return (tc*td < 0);
-    },
-    /*
-    collide: function () {
-        var elements = this.parent.children;
-        elements.each(function (element) {
-            if (element === this || !element.collidable) return;
-            var r0 = element;
-            var r1 = this;
-            if (element.hitTestElement(this)) {
-                var isCrossRT =
-                    this.crossTest(r0.left, r0.top, r0.right, r0.top,
-                        r1.right, r1.top, r1.right, r1.bottom);
-                var isCrossLT =
-                    this.crossTest(r0.left, r0.top, r0.right, r0.top,
-                        r1.left, r1.top, r1.left, r1.bottom);
-                var isCrossTL =
-                    this.crossTest(r0.left, r0.top, r0.left, r0.bottom,
-                        r1.left, r1.top, r1.right, r1.top);
-                var isCrossBL =
-                    this.crossTest(r0.left, r0.top, r0.left, r0.bottom,
-                        r1.left, r1.bottom, r1.right, r1.bottom);
-                var isCrossTR =
-                    this.crossTest(r0.right, r0.top, r0.right, r0.bottom,
-                        r1.left, r1.top, r1.right, r1.top);
-                var isCrossBR =
-                    this.crossTest(r0.right, r0.top, r0.right, r0.bottom,
-                        r1.left, r1.bottom, r1.right, r1.bottom);
-                var isCrossLB =
-                    this.crossTest(r0.left, r0.bottom, r0.right, r0.bottom,
-                        r1.left, r1.top, r1.left, r1.bottom);
-                var isCrossRB =
-                    this.crossTest(r0.left, r0.bottom, r0.right, r0.bottom,
-                        r1.right, r1.top, r1.right, r1.bottom);
-                // r0上辺とr1右辺がぶつかった
-                if (isCrossRT || isCrossLT) {
-                    // r1.bottom = r0.top;
-                    // // 反射ベクトル式：r = f-2(f*normal)*normal
-                    // // 壁ベクトル
-                    // var n = Vector2(r0.right-r0.left, r0.top-r0.top);
-                    // // 壁の法線ベクトル
-                    // var normal = Vector2(-n.y, n.x).normalize();
-                    // // 進行ベクトルと法線の内積
-                    // var a = -Vector2.dot(this.velocity, normal);
-                    // // 反射ベクトル
-                    // var r = Vector2.add(this.velocity, normal.mul(2*a));
-                    // this.velocity.set(r.x, r.y);
-                    // this.velocity.y *= this.elestic;
-                } else { this.isCollide = false; }
-                // r0上辺とr1左辺がぶつかった
-                if (isCrossTL || isCrossBL) {
-                    console.info('左');
-                    r1.left = r0.left;
-                    var n = Vector2(r0.right-r0.left, r0.bottom-r0.top);
-                    var normal = Vector2(-n.y, n.x).normalize();
-                    var a = -Vector2.dot(this.velocity, normal.mul(2*a));
-                    var r = Vector2.add(this.velocity, normal.mul(2*a));
-                    this.velocity.set(r.x, r.y);
-                    this.velocity.mul(this.elestic);
-                }
-                // r0右辺とr1上辺がぶつかった
-                if (isCrossTR || isCrossBR) {
-                    // console.info('右');
-                    // r0の右にぶつかる
-                }
-                if(isCrossLB || isCrossRB) {
-                    // console.info('下');
-                    // r0の下にぶつかる
-                }
-                // console.log("----------------------");
-                // console.log("isCrossRT={0}".format(isCrossRT));
-                // console.log("isCrossLT={0}".format(isCrossLT));
-                // console.log("isCrossTL={0}".format(isCrossTL));
-                // console.log("isCrossBL={0}".format(isCrossBL));
-                // console.log("isCrossTR={0}".format(isCrossTR));
-                // console.log("isCrossBR={0}".format(isCrossBR));
-                // console.log("isCrossLB={0}".format(isCrossLB));
-                // console.log("isCrossRB={0}".format(isCrossRB));
-                // console.log("----------------------");
+        this.on('attached', function () {
+            let self = this;
+            if (!this.target.parent) {
+                this.target.on('added', function (e) {
+                    self.flare('attached');
+                });
+                return;
             }
-        }, this);
+            this.collidables = this.target.parent.children;
+        });
     },
-    */
-    collide: function (element) {
+    setCollidables: function (collidables) {
+        if (typeof(collidables.each) !== 'function')
+            throw new Error('not eachable object');
+        
+        this.collidables = collidables;
+    },
+    getCollidables: function () {
+        return this.collidables;
+    },
+    withElement: function (element) {
+        // 衝突対象の各辺
         const top = element.top;
         const bottom = element.bottom;
         const left = element.left;
@@ -334,14 +191,18 @@ phina.define ('Ball', {
 
         const prepos = Vector2.sub(this.position, this.velocity);
         const nowpos = this.position.clone();
+        
+        // 座標位置を遡る回数
         const numOfJudge = 10;
+
         for (var i = 0; i < numOfJudge; i++) {
+            // n回前の座標位置を求める
             var lerp = Vector2.lerp(prepos, nowpos, i/numOfJudge);
             // 中心点同士の距離を測り、xとy比較して差が大きい方向から衝突したとして処理する
             var dp = Vector2.sub(lerp, element);
+
             if (Math.abs(dp.x) < Math.abs(dp.y)) {
                 // yの方が差が大きい=上もしくは下からきた
-                
                 if (dp.y >= 0) {
                     this.top = bottom;
                     var surface = Vector2(right-left, 0);
@@ -381,28 +242,117 @@ phina.define ('Ball', {
             }
         }
     },
-    collideWithGround: function (ground) {
+    withGround: function (ground) {
         this.bottom = ground.top;
         this.velocity.y *= -0.5;
     },
-    collider: function () {
-        var elements = this.parent.children;
-        elements.each(function (elem) {
-            if (elem === this || !elem.collidable) return;
-            if (elem.isGround && elem.hitTestElement(this)) {
-                this.collideWithGround(elem);
-            } else if (elem.hitTestElement(this)) {
-                this.collide(elem);
+    update: function (app) {
+        if (!this.collidables) return;
+        var filtered = this.collidables.filter( (it) => it !== this.target && it.collidable );
+        filtered.each(function (element) {
+            if (element.hitTestElement(this.target)) {
+                if (element.isGround) {
+                    this.withGround.call(this.target, element);
+                } else {
+                    this.withElement.call(this.target, element);
+                }
             }
         }, this);
+    }
+});
+
+phina.define('Player', {
+    superClass: 'RectangleShape',
+    init: function (option) {
+        option = option || {};
+        this.superInit(option);
+        this.collider = Collider(this).attachTo(this);
+        this.draggable.enable();
+        this.on('dragstart', () => {
+            this.physics.isKinematic = false;
+        });
+        this.on('dragend', () => {
+            this.physics.isKinematic = true
+        });
     },
     update: function (app) {
-        // this.label.text = this.isCollide ? 'hit' : 'none';
+    }
+});
+
+phina.define ('Ball', {
+    superClass: 'CircleShape',
+    init: function (option) {
+        option = option || {};
+        this.superInit(option);
+        var g = option.gravity || Vector2(0, 0.1);
+        option.physics && this.physics.gravity.set(g.x, g.y);
+        this.elestic = 0.6;
+
+        this.on('pointstart', function (e) {
+            this.startPosition = e.pointer.position.clone();
+        });
+        this.on('pointmove', function (e) {
+            //var v = Vector2.sub(ball.startPosition, e.pointer.position);
+        });
+        this.on('pointend', function (e) {
+            this.endPosition = e.pointer.position.clone();
+            var v = Vector2.sub(this.startPosition, this.endPosition).mul(0.2);
+            this.addForce(v.x, v.y);
+        });
+
+        this.collider = Collider(this).attachTo(this);
+
+        this.shape = RectangleShape({
+            width: this.width,
+            height: this.height,
+        }).addChildTo(this).alpha = 0.3;
+    },
+    bound: function (app) {
+        var left = this.parent.left //+ this.parent.width*this.originX;
+        var right = this.parent.right //+ this.parent.width*this.originX;
+        var top = this.parent.top //+ this.parent.height*this.originY;
+        var bottom = this.parent.bottom //+ this.parent.height*this.originY;
+        // Vector2.reflectってメソッドあるよね…
+        var calcReflectVector = function (v, surface) {
+            var normal = Vector2(-surface.y, surface.x).normalize();
+            var a = -Vector2.dot(v, normal);
+            var r = Vector2.add(v, Vector2.mul(normal, 2*a));
+            return r;
+        }
+        if (left > this.left) {
+            this.left = left;
+            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
+            this.velocity.set(reflect.x, reflect.y);
+            this.velocity.mul(this.elestic);
+        }
+        if (right < this.right) {
+            this.right = right;
+            var reflect = calcReflectVector(this.velocity, Vector2(0, bottom - top));
+            this.velocity.set(reflect.x, reflect.y);
+            this.velocity.mul(this.elestic);
+        }
+        if (top > this.top) {
+            this.top = top;
+            var reflect = calcReflectVector(this.velocity, Vector2(right - left, 0));
+            this.velocity.set(reflect.x, reflect.y);
+            this.velocity.mul(this.elestic);
+        }
+        if (bottom < this.bottom) {
+            this.bottom = bottom;
+            var reflect = calcReflectVector(this.velocity, Vector2(left - right, 0));
+            this.velocity.set(reflect.x, reflect.y);
+            this.velocity.y *= this.elestic;
+        }
+    },
+    crossTest: function (ax, ay, bx, by, cx, cy, dx, dy) {
+        // 線分交差判定
+        // http://qiita.com/ykob/items/ab7f30c43a0ed52d16f2
+        var tc = Math.floor((ax-bx)*(cy-ay)+(ay-by)*(ax-cx));
+        var td = Math.floor((ax-bx)*(dy-ay)+(ay-by)*(ax-dx));
+        return (tc*td < 0);
+    },
+    update: function (app) {
         this.bound();
-        this.collider();
-        //this.collide();
-        // var p = app.pointer;
-        // this.position.set(p.x, p.y);
     },
 });
 
@@ -412,12 +362,14 @@ phina.define('MainScene', {
         this.superInit(option);
 
         var layer = this.layer = CanvasLayer({
+            x: this.gridX.center(),
+            y: this.gridY.center(),
             width: World.width,
             height: World.height,
             backgroundColor: this.backgroundColor,
         }).addChildTo(this);
         layer.backgroundColor = this.backgroundColor;
-        layer.hide();
+        //layer.hide();
 
         var ball = layer.ball = Ball({
             stroke: '#444',
@@ -439,8 +391,8 @@ phina.define('MainScene', {
         ground.isGround = true;
         ground.top = layer.height*0.95 + 10;
         ground.left = 0;
-        
-        (100).times(function () {
+
+        (1).times(function () {
             var rect = RectangleShape({
                 fill: 'hsla({0}, 75%, 50%, 1)'.format(Math.randint(0, 360)),
                 width: Math.randint(30, 100),
@@ -450,6 +402,12 @@ phina.define('MainScene', {
             rect.collidable = true;
         }, layer);
 
+        var player = this.player = Player().addChildTo(layer);
+        player.physics.gravity.set(0, 1);
+        player.x = layer.gridX.center();
+        player.y = layer.gridY.center();
+        //player.attach(Collider());
+
         var camera = this.camera = Camera({
             x: this.gridX.center(),
             y: this.gridY.center(),
@@ -457,12 +415,8 @@ phina.define('MainScene', {
             height: this.height,
             magnification: 1,
         }).addChildTo(this);
-        camera.follow(ball);
-        this.on('added', function (e) {
-            this.removeChild(camera);
-            this.addChild(camera);
-        });
-
+        camera.follow(player);
+        
         this.on('pointstart', function (e) {
             ball.flare('pointstart', e);
         });
@@ -474,6 +428,8 @@ phina.define('MainScene', {
         });
     },
     update: function (app) {
+        // console.log('pointer.x={0},pointer.y={1}'.format(app.pointer.x, app.pointer.y));
+        // console.log('player.x={0},player.y={1}'.format(this.player.x, this.player.y));
         //this.camera.setRange(app.pointer.x, app.pointer.y, 960, 480);
     }
 });
